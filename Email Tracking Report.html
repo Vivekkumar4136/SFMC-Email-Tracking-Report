@@ -1,0 +1,730 @@
+%%[
+SET @emailname  = RequestParameter("emailname")
+SET @startdate  = RequestParameter("startdate")
+SET @enddate    = RequestParameter("enddate")
+SET @pagesize   = IIF(Empty(RequestParameter("pagesize")), "10", RequestParameter("pagesize"))
+SET @page       = IIF(Empty(RequestParameter("page")), "1", RequestParameter("page"))
+]%%
+
+<script runat="server">
+Platform.Load("Core","1");
+
+var emailname = Request.GetQueryStringParameter("emailname") || "";
+var startdate = Request.GetQueryStringParameter("startdate") || "";
+var enddate   = Request.GetQueryStringParameter("enddate")   || "";
+var page      = parseInt(Request.GetQueryStringParameter("page"))     || 1;
+var pagesize  = parseInt(Request.GetQueryStringParameter("pagesize")) || 10;
+
+var searched = true;
+
+var rows = [], allRows = [];
+var totalRows = 0, totalPages = 1, errMsg = "";
+
+var sumActualSend   = 0;
+var sumDelivered    = 0;
+var sumUniqueOpens  = 0;
+var sumUniqueClicks = 0;
+var sumDeliveryRate = 0;
+var sumOpenRate     = 0;
+var sumClickRate    = 0;
+var sumTotalBounce  = 0;
+var sumHardBounce   = 0;
+var sumBlockBounce  = 0;
+var sumTechBounce   = 0;
+var rateCount       = 0;
+
+// TODO: Replace with your published Bounce Detail CloudPage URL
+var BOUNCE_PAGE_URL = "YOUR_BOUNCE_DETAIL_CLOUDPAGE_URL";
+
+function toSFMCDate(d){
+    if(!d) return "";
+    var p = d.split("-");
+    return parseInt(p[1])+"/"+parseInt(p[2])+"/"+p[0];
+}
+
+function sv(v){ return (v == null || v === "") ? "&mdash;" : v; }
+
+function pgLink(p){
+    return "?emailname="+encodeURIComponent(emailname)
+          +"&startdate="+startdate
+          +"&enddate="+enddate
+          +"&pagesize="+pagesize
+          +"&page="+p;
+}
+
+function jsStr(v){
+    if(v === null || v === undefined) return "";
+    var s = String(v);
+    s = s.replace(/\\/g, "\\\\");
+    s = s.replace(/"/g,  '\\"');
+    s = s.replace(/\r/g, "");
+    s = s.replace(/\n/g, " ");
+    return s;
+}
+
+if(searched){
+    try{
+        var de = DataExtension.Init("YOUR_TRACKING_DE_NAME");
+        var filters = [];
+
+        if(emailname) filters.push({Property:"EmailName", SimpleOperator:"like", Value:"%"+emailname+"%"});
+
+        if(startdate && enddate){
+            filters.push({
+                LeftOperand:  {Property:"EventDate", SimpleOperator:"greaterThanOrEqual", Value: toSFMCDate(startdate)},
+                LogicalOperator: "AND",
+                RightOperand: {Property:"EventDate", SimpleOperator:"lessThanOrEqual",    Value: toSFMCDate(enddate)}
+            });
+        } else if(startdate){
+            filters.push({Property:"EventDate", SimpleOperator:"greaterThanOrEqual", Value: toSFMCDate(startdate)});
+        } else if(enddate){
+            filters.push({Property:"EventDate", SimpleOperator:"lessThanOrEqual",    Value: toSFMCDate(enddate)});
+        }
+
+        var finalFilter = null;
+        if(filters.length === 1){
+            finalFilter = filters[0];
+        } else if(filters.length > 1){
+            finalFilter = filters[0];
+            for(var i = 1; i < filters.length; i++){
+                finalFilter = {
+                    LeftOperand:     finalFilter,
+                    LogicalOperator: "AND",
+                    RightOperand:    filters[i]
+                };
+            }
+        }
+
+        allRows    = finalFilter ? de.Rows.Retrieve(finalFilter) : de.Rows.Retrieve();
+        totalRows  = allRows ? allRows.length : 0;
+        totalPages = Math.ceil(totalRows / pagesize) || 1;
+
+        if(page > totalPages) page = totalPages;
+        if(page < 1)          page = 1;
+
+        if(allRows){
+            for(var k = 0; k < allRows.length; k++){
+                var rr = allRows[k];
+                sumActualSend   += parseFloat(rr.ActualSend)       || 0;
+                sumDelivered    += parseFloat(rr.Delivered)        || 0;
+                sumUniqueOpens  += parseFloat(rr.UniqueOpens)      || 0;
+                sumUniqueClicks += parseFloat(rr.UniqueClicks)     || 0;
+                sumDeliveryRate += parseFloat(rr.DeliveryRate)     || 0;
+                sumOpenRate     += parseFloat(rr.OpenRate)         || 0;
+                sumClickRate    += parseFloat(rr.ClickRate)        || 0;
+                sumTotalBounce  += parseFloat(rr.TotalBounce)      || 0;
+                sumHardBounce   += parseFloat(rr.HardBounce)       || 0;
+                sumBlockBounce  += parseFloat(rr.BlockBounce)      || 0;
+                sumTechBounce   += parseFloat(rr.TechnicalBounce)  || 0;
+                rateCount++;
+            }
+        }
+
+        var start = (page - 1) * pagesize;
+        var end   = Math.min(start + pagesize, totalRows);
+        for(var i = start; i < end; i++){
+            rows.push(allRows[i]);
+        }
+
+    }catch(e){
+        errMsg = String(e);
+    }
+}
+</script>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Email Tracking Report</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+    --bg:        #0f1117;
+    --surface:   #181c27;
+    --surface2:  #1e2333;
+    --border:    #2a2f42;
+    --accent:    #3b82f6;
+    --accent2:   #6366f1;
+    --success:   #10b981;
+    --warning:   #f59e0b;
+    --danger:    #ef4444;
+    --text:      #e2e8f0;
+    --muted:     #64748b;
+    --radius:    10px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+    font-family: 'IBM Plex Sans', sans-serif;
+    background: var(--bg); color: var(--text);
+    min-height: 100vh; font-size: 14px;
+}
+
+/* ── HEADER ── */
+.header {
+    background: linear-gradient(135deg, var(--surface) 0%, #1a1f35 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 20px 28px; display: flex;
+    align-items: center; gap: 12px;
+}
+.header-icon {
+    width: 38px; height: 38px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 9px; display: flex;
+    align-items: center; justify-content: center; font-size: 18px;
+}
+.header h1 {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 17px; font-weight: 600;
+    letter-spacing: 0.04em; color: var(--text);
+}
+.header span { font-size: 12px; color: var(--muted); margin-top: 2px; display: block; }
+
+/* ── BUTTONS ── */
+.dl-btn {
+    padding: 8px 18px;
+    background: linear-gradient(135deg, var(--success), #059669);
+    border: none; border-radius: 7px;
+    color: #fff; font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 13px; font-weight: 600; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 7px;
+    transition: opacity .2s, transform .15s; white-space: nowrap;
+}
+.dl-btn:hover  { opacity: .88; transform: translateY(-1px); }
+.dl-btn:active { transform: translateY(0); }
+.dl-btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+
+.container { padding: 24px 28px; max-width: 1600px; }
+.card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 20px 24px; margin-bottom: 18px;
+}
+.card-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px; font-weight: 600;
+    letter-spacing: 0.12em; color: var(--muted);
+    text-transform: uppercase; margin-bottom: 14px;
+}
+
+/* ── FILTER ROW ── */
+.filter-row {
+    display: flex; flex-wrap: wrap;
+    align-items: flex-end; gap: 12px;
+}
+.filter-row-right {
+    margin-left: auto;
+    display: flex; align-items: flex-end; gap: 10px;
+}
+.filter-group { display: flex; flex-direction: column; gap: 5px; }
+.filter-group label {
+    font-size: 11px; font-weight: 500;
+    color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em;
+}
+input[type="text"], input[type="date"], select {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 7px; color: var(--text); padding: 8px 12px; font-size: 13px;
+    font-family: 'IBM Plex Sans', sans-serif; outline: none;
+    transition: border-color .2s, box-shadow .2s; min-width: 160px;
+}
+input[type="text"]:focus, input[type="date"]:focus, select:focus {
+    border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59,130,246,.18);
+}
+input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cursor: pointer; }
+.btn-row { display: flex; gap: 10px; margin-top: 2px; }
+.btn {
+    padding: 8px 20px; border: none; border-radius: 7px;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 13px; font-weight: 600; cursor: pointer;
+    transition: opacity .2s, transform .1s;
+}
+.btn:hover { opacity: .88; }
+.btn:active { transform: scale(.97); }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-reset   { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+
+/* ── SUMMARY GRID ── */
+.summary-grid {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 10px; margin-bottom: 18px;
+}
+.stat-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 12px 14px;
+    position: relative; overflow: hidden; transition: border-color .2s;
+}
+.stat-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    opacity: 0; transition: opacity .2s;
+}
+.stat-card:hover { border-color: var(--accent); }
+.stat-card:hover::before { opacity: 1; }
+.stat-label {
+    font-size: 9px; font-weight: 600; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--muted); margin-bottom: 8px;
+}
+.stat-value {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 18px; font-weight: 600; color: var(--text); line-height: 1;
+}
+.stat-value.accent  { color: var(--accent);  }
+.stat-value.success { color: var(--success); }
+.stat-value.warning { color: var(--warning); }
+.stat-value.danger  { color: var(--danger);  }
+
+/* ── TABLE META ── */
+.table-meta {
+    display: flex; justify-content: space-between;
+    align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 8px;
+}
+.table-meta-left { font-size: 12px; color: var(--muted); }
+.table-meta-left strong { color: var(--text); font-family: 'IBM Plex Mono', monospace; }
+
+/* ── Instructional label ── */
+.table-hint {
+    font-size: 11px; color: var(--muted);
+    font-style: italic; margin-bottom: 10px;
+    padding-left: 2px;
+}
+
+/* ── TABLE with frozen first 3 columns ── */
+.table-wrap {
+    overflow-x: auto; overflow-y: auto; max-height: 500px;
+    border-radius: var(--radius); border: 1px solid var(--border);
+    position: relative;
+}
+table {
+    width: 100%; border-collapse: separate; border-spacing: 0;
+    font-size: 12.5px; min-width: 1300px;
+}
+
+/* Sticky header */
+th {
+    background: #1a1f35; color: var(--muted);
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: .08em; padding: 10px 12px; text-align: left;
+    border-bottom: 1px solid var(--border); white-space: nowrap;
+    position: sticky; top: 0; z-index: 2;
+}
+
+/* Frozen column styles — columns 1, 2, 3 */
+th:nth-child(1), td:nth-child(1) {
+    position: sticky; left: 0; z-index: 3;
+    background: #1a1f35;
+    box-shadow: 2px 0 0 var(--border);
+    min-width: 90px;
+}
+th:nth-child(2), td:nth-child(2) {
+    position: sticky; left: 90px; z-index: 3;
+    background: #1a1f35;
+    box-shadow: 2px 0 0 var(--border);
+    min-width: 220px;
+}
+th:nth-child(3), td:nth-child(3) {
+    position: sticky; left: 310px; z-index: 3;
+    background: #1a1f35;
+    box-shadow: 2px 0 8px rgba(0,0,0,0.4);
+    min-width: 110px;
+}
+
+/* Keep frozen td background on hover consistent */
+tbody tr:hover td:nth-child(1),
+tbody tr:hover td:nth-child(2),
+tbody tr:hover td:nth-child(3) {
+    background: #232840;
+}
+
+td {
+    padding: 9px 12px; border-bottom: 1px solid var(--border);
+    color: var(--text); white-space: nowrap; background: var(--surface);
+}
+tr:last-child td { border-bottom: none; }
+tbody tr { transition: background .15s; }
+tbody tr:hover td { background: var(--surface2); }
+
+.mono { font-family: 'IBM Plex Mono', monospace; font-size: 12px; }
+.jobid-link {
+    font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+    color: var(--accent); text-decoration: none;
+    border-bottom: 1px dashed rgba(59,130,246,0.4);
+    padding-bottom: 1px; transition: color .15s, border-color .15s;
+}
+.jobid-link:hover { color: #60a5fa; border-bottom-color: #60a5fa; }
+
+/* ── TABLE FOOTER ── */
+.table-footer {
+    display: flex; justify-content: space-between;
+    align-items: center; margin-top: 14px; flex-wrap: wrap; gap: 10px;
+}
+.total-label { font-size: 12px; color: var(--muted); }
+.total-label strong { font-family: 'IBM Plex Mono', monospace; color: var(--accent); font-size: 14px; }
+.pagination { display: flex; gap: 6px; flex-wrap: wrap; }
+.pagination a {
+    padding: 5px 11px; border: 1px solid var(--border); border-radius: 6px;
+    text-decoration: none; color: var(--text); font-size: 12px;
+    font-family: 'IBM Plex Mono', monospace; transition: background .15s, border-color .15s;
+}
+.pagination a:hover   { background: var(--surface2); border-color: var(--accent); }
+.pagination a.active  { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.empty-state { padding: 48px; text-align: center; color: var(--muted); }
+.empty-state .icon { font-size: 36px; margin-bottom: 10px; }
+.empty-state p { font-size: 14px; }
+@media (max-width: 768px) {
+    .container { padding: 16px; }
+    .filter-row { flex-direction: column; }
+    .filter-row-right { margin-left: 0; }
+    .summary-grid { grid-template-columns: repeat(2, 1fr); }
+}
+</style>
+</head>
+<body>
+
+<script runat="server">
+if(searched && !errMsg && totalRows > 0){
+
+    var avgDelivery = (rateCount > 0) ? (sumDeliveryRate / rateCount) : 0;
+    var avgOpen     = (rateCount > 0) ? (sumOpenRate     / rateCount) : 0;
+    var avgClick    = (rateCount > 0) ? (sumClickRate    / rateCount) : 0;
+
+    function fmtPct(n){ return n.toFixed(2) + "%"; }
+
+    var jsObj = 'var TRACKING_DATA = {';
+    jsObj += '"filters":{';
+    jsObj += '"emailname":"' + jsStr(emailname) + '",';
+    jsObj += '"startdate":"' + jsStr(startdate) + '",';
+    jsObj += '"enddate":"'   + jsStr(enddate)   + '"';
+    jsObj += '},';
+    jsObj += '"summary":{';
+    jsObj += '"totalRecords":'     + totalRows            + ',';
+    jsObj += '"actualSend":'       + sumActualSend         + ',';
+    jsObj += '"delivered":'        + sumDelivered          + ',';
+    jsObj += '"uniqueOpens":'      + sumUniqueOpens        + ',';
+    jsObj += '"uniqueClicks":'     + sumUniqueClicks       + ',';
+    jsObj += '"avgDeliveryRate":"' + fmtPct(avgDelivery)   + '",';
+    jsObj += '"avgOpenRate":"'     + fmtPct(avgOpen)       + '",';
+    jsObj += '"avgClickRate":"'    + fmtPct(avgClick)      + '",';
+    jsObj += '"totalBounce":'      + sumTotalBounce        + ',';
+    jsObj += '"hardBounce":'       + sumHardBounce         + ',';
+    jsObj += '"totalBlock":'       + sumBlockBounce        + ',';
+    jsObj += '"totalTechBounce":'  + sumTechBounce         + '';
+    jsObj += '},';
+    jsObj += '"rows":[';
+    for(var k = 0; k < allRows.length; k++){
+        var r = allRows[k];
+        if(k > 0) jsObj += ',';
+        jsObj += '{';
+        jsObj += '"JobID":"'           + jsStr(r.JobID)            + '",';
+        jsObj += '"EmailName":"'       + jsStr(r.EmailName)        + '",';
+        jsObj += '"EventDate":"'       + jsStr(r.EventDate)        + '",';
+        jsObj += '"PlannedSend":"'     + jsStr(r.PlannedSend)      + '",';
+        jsObj += '"ActualSend":"'      + jsStr(r.ActualSend)       + '",';
+        jsObj += '"Delivered":"'       + jsStr(r.Delivered)        + '",';
+        jsObj += '"UniqueOpens":"'     + jsStr(r.UniqueOpens)      + '",';
+        jsObj += '"UniqueClicks":"'    + jsStr(r.UniqueClicks)     + '",';
+        jsObj += '"DeliveryRate":"'    + jsStr(r.DeliveryRate)     + '",';
+        jsObj += '"OpenRate":"'        + jsStr(r.OpenRate)         + '",';
+        jsObj += '"ClickRate":"'       + jsStr(r.ClickRate)        + '",';
+        jsObj += '"Unsubscribes":"'    + jsStr(r.Unsubscribes)     + '",';
+        jsObj += '"TotalBounce":"'     + jsStr(r.TotalBounce)      + '",';
+        jsObj += '"HardBounce":"'      + jsStr(r.HardBounce)       + '",';
+        jsObj += '"SoftBounce":"'      + jsStr(r.SoftBounce)       + '",';
+        jsObj += '"BlockBounce":"'     + jsStr(r.BlockBounce)      + '",';
+        jsObj += '"TechnicalBounce":"' + jsStr(r.TechnicalBounce)  + '",';
+        jsObj += '"UnknownBounce":"'   + jsStr(r.UnknownBounce)    + '",';
+        jsObj += '"Held":"'            + jsStr(r.Held)             + '",';
+        jsObj += '"ListDetective":"'   + jsStr(r.ListDetective)    + '",';
+        jsObj += '"ExclusionDate":"'   + jsStr(r.ExclusionDate)    + '",';
+        jsObj += '"Comments":"'        + jsStr(r.Comments)         + '"';
+        jsObj += '}';
+    }
+    jsObj += ']';
+    jsObj += '};';
+
+    Write('<script>' + jsObj + '<\/script>');
+
+} else {
+    Write('<script>var TRACKING_DATA = null;<\/script>');
+}
+</script>
+
+<!-- HEADER -->
+<div class="header">
+    <div class="header-icon">📊</div>
+    <div>
+        <h1>Email Tracking Report</h1>
+        <span>Salesforce Marketing Cloud · Email Performance Dashboard</span>
+    </div>
+</div>
+
+<div class="container">
+
+<!-- SEARCH FILTERS CARD -->
+<div class="card">
+    <div class="card-label">Search Filters</div>
+    <form method="GET">
+        <div class="filter-row">
+            <div class="filter-group">
+                <label>Email Name</label>
+                <input type="text" name="emailname" placeholder="Search email name…" value="%%=v(@emailname)=%%">
+            </div>
+            <div class="filter-group">
+                <label>Start Date</label>
+                <input type="date" name="startdate" value="%%=v(@startdate)=%%">
+            </div>
+            <div class="filter-group">
+                <label>End Date</label>
+                <input type="date" name="enddate" value="%%=v(@enddate)=%%">
+            </div>
+            <div class="filter-group">
+                <label>Items per Page</label>
+                <select name="pagesize">
+                    <option value="10"  %%[IF @pagesize == "10"  THEN]%%selected%%[ENDIF]%%>10</option>
+                    <option value="25"  %%[IF @pagesize == "25"  THEN]%%selected%%[ENDIF]%%>25</option>
+                    <option value="50"  %%[IF @pagesize == "50"  THEN]%%selected%%[ENDIF]%%>50</option>
+                    <option value="100" %%[IF @pagesize == "100" THEN]%%selected%%[ENDIF]%%>100</option>
+                </select>
+            </div>
+            <!-- RIGHT SIDE: Search + Reset + Download CSV -->
+            <div class="filter-row-right">
+                <div class="filter-group">
+                    <label>&nbsp;</label>
+                    <div class="btn-row">
+                        <button type="submit" class="btn btn-primary">⌕ Search</button>
+                        <button type="button" class="btn btn-reset" onclick="window.location.href='?'">↺ Reset</button>
+                        <button type="button" class="dl-btn" id="dlBtn" onclick="downloadCSV()">⬇ Download CSV</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- SUMMARY STATS -->
+<script runat="server">
+if(searched && !errMsg && totalRows > 0){
+    var avgDelivery2 = (rateCount > 0) ? (sumDeliveryRate / rateCount) : 0;
+    var avgOpen2     = (rateCount > 0) ? (sumOpenRate     / rateCount) : 0;
+    var avgClick2    = (rateCount > 0) ? (sumClickRate    / rateCount) : 0;
+
+    function fmtNum(n){
+        return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g,",");
+    }
+    function fmtPct2(n){ return n.toFixed(2)+"%"; }
+
+    Write('<div class="card-label" style="margin-bottom:10px;color:#64748b;font-family:\'IBM Plex Mono\',monospace;font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;">Summary — All '+totalRows+' Record'+(totalRows!=1?'s':'')+'</div>');
+    Write('<div class="summary-grid">');
+    Write('<div class="stat-card"><div class="stat-label">Actual Send</div><div class="stat-value accent">'+fmtNum(sumActualSend)+'</div></div>');
+    Write('<div class="stat-card"><div class="stat-label">Avg Delivery Rate</div><div class="stat-value success">'+fmtPct2(avgDelivery2)+'</div></div>');
+    Write('<div class="stat-card"><div class="stat-label">Avg Open Rate</div><div class="stat-value warning">'+fmtPct2(avgOpen2)+'</div></div>');
+    Write('<div class="stat-card"><div class="stat-label">Avg Click Rate</div><div class="stat-value accent">'+fmtPct2(avgClick2)+'</div></div>');
+    Write('<div class="stat-card"><div class="stat-label">Total Bounces</div><div class="stat-value danger">'+fmtNum(sumTotalBounce)+'</div></div>');
+    Write('<div class="stat-card"><div class="stat-label">Hard Bounces</div><div class="stat-value danger">'+fmtNum(sumHardBounce)+'</div></div>');
+    Write('<div class="stat-card"><div class="stat-label">Total Block Bounces</div><div class="stat-value danger">'+fmtNum(sumBlockBounce)+'</div></div>');
+    Write('<div class="stat-card"><div class="stat-label">Total Tech Bounces</div><div class="stat-value danger">'+fmtNum(sumTechBounce)+'</div></div>');
+    Write('</div>');
+}
+</script>
+
+<!-- DATA TABLE CARD -->
+<div class="card">
+<script runat="server">
+if(!searched){
+    Write('<div class="empty-state"><div class="icon"></div><p>Enter search filters above and click <strong>Search</strong> to load the report.</p></div>');
+} else if(errMsg){
+    Write('<div class="empty-state"><div class="icon">⚠️</div><p>Error: '+errMsg+'</p></div>');
+} else if(totalRows == 0){
+    Write('<div class="empty-state"><div class="icon">📭</div><p>No records found for the selected filters.</p></div>');
+} else {
+
+    var startItem = (page-1)*pagesize + 1;
+    var endItem   = Math.min(page*pagesize, totalRows);
+
+    Write('<div class="table-meta">');
+    Write('<div class="table-meta-left">Showing <strong>'+startItem+'&ndash;'+endItem+'</strong> of <strong>'+totalRows+'</strong> records &nbsp;<span style="color:var(--success);font-size:11px;">(CSV exports all '+totalRows+' records)</span></div>');
+    Write('</div>');
+
+    Write('<div class="table-hint">Click on a given Job ID to get the respective email bounce report details.</div>');
+
+    Write('<div class="table-wrap">');
+    Write('<table>');
+    Write('<thead><tr>');
+    Write('<th>Job ID</th>');
+    Write('<th>Email Name</th>');
+    Write('<th>Event Date</th>');
+    Write('<th>Planned Send</th>');
+    Write('<th>Actual Send</th>');
+    Write('<th>Delivered</th>');
+    Write('<th>Unique Opens</th>');
+    Write('<th>Unique Clicks</th>');
+    Write('<th>Delivery Rate</th>');
+    Write('<th>Open Rate</th>');
+    Write('<th>Click Rate</th>');
+    Write('<th>Unsubscribes</th>');
+    Write('<th>Total Bounce</th>');
+    Write('<th>Hard Bounce</th>');
+    Write('<th>Soft Bounce</th>');
+    Write('<th>Block Bounce</th>');
+    Write('<th>Tech Bounce</th>');
+    Write('<th>Unknown Bounce</th>');
+    Write('<th>Held</th>');
+    Write('<th>List Detective</th>');
+    Write('<th>Exclusion Date</th>');
+    Write('<th>Comments</th>');
+    Write('</tr></thead>');
+    Write('<tbody>');
+
+    for(var i = 0; i < rows.length; i++){
+        var r = rows[i];
+        var jobIdVal     = r.JobID     || "";
+        var eventDateVal = r.EventDate || "";
+        var bounceUrl    = BOUNCE_PAGE_URL
+                          + "?jobid="     + encodeURIComponent(jobIdVal)
+                          + "&eventdate=" + encodeURIComponent(eventDateVal);
+
+        Write('<tr>');
+        if(jobIdVal){
+            Write('<td><a class="jobid-link" href="'+bounceUrl+'" title="View bounce details for Job '+jobIdVal+'">'+jobIdVal+'</a></td>');
+        } else {
+            Write('<td class="mono">&mdash;</td>');
+        }
+        Write('<td>'+sv(r.EmailName)+'</td>');
+        Write('<td class="mono">'+sv(r.EventDate)+'</td>');
+        Write('<td class="mono">'+sv(r.PlannedSend)+'</td>');
+        Write('<td class="mono">'+sv(r.ActualSend)+'</td>');
+        Write('<td class="mono">'+sv(r.Delivered)+'</td>');
+        Write('<td class="mono">'+sv(r.UniqueOpens)+'</td>');
+        Write('<td class="mono">'+sv(r.UniqueClicks)+'</td>');
+        Write('<td class="mono">'+sv(r.DeliveryRate)+'</td>');
+        Write('<td class="mono">'+sv(r.OpenRate)+'</td>');
+        Write('<td class="mono">'+sv(r.ClickRate)+'</td>');
+        Write('<td class="mono">'+sv(r.Unsubscribes)+'</td>');
+        Write('<td class="mono">'+sv(r.TotalBounce)+'</td>');
+        Write('<td class="mono">'+sv(r.HardBounce)+'</td>');
+        Write('<td class="mono">'+sv(r.SoftBounce)+'</td>');
+        Write('<td class="mono">'+sv(r.BlockBounce)+'</td>');
+        Write('<td class="mono">'+sv(r.TechnicalBounce)+'</td>');
+        Write('<td class="mono">'+sv(r.UnknownBounce)+'</td>');
+        Write('<td class="mono">'+sv(r.Held)+'</td>');
+        Write('<td class="mono">'+sv(r.ListDetective)+'</td>');
+        Write('<td class="mono">'+sv(r.ExclusionDate ? String(r.ExclusionDate).split(" ")[0] : "")+'</td>');
+        Write('<td>'+sv(r.Comments)+'</td>');
+        Write('</tr>');
+    }
+
+    Write('</tbody></table>');
+    Write('</div>');
+
+    Write('<div class="table-footer">');
+    Write('<div class="total-label">Total Records: <strong>'+totalRows+'</strong></div>');
+
+    if(totalPages > 1){
+        Write('<div class="pagination">');
+        var maxPg   = 10;
+        var pgStart = Math.max(1, page - Math.floor(maxPg/2));
+        var pgEnd   = Math.min(totalPages, pgStart + maxPg - 1);
+        if(pgEnd - pgStart < maxPg - 1) pgStart = Math.max(1, pgEnd - maxPg + 1);
+
+        if(page > 1) Write('<a href="'+pgLink(page-1)+'">&#8249; Prev</a>');
+        for(var p = pgStart; p <= pgEnd; p++){
+            var cls = (p == page) ? " active" : "";
+            Write('<a class="'+cls+'" href="'+pgLink(p)+'">'+p+'</a>');
+        }
+        if(page < totalPages) Write('<a href="'+pgLink(page+1)+'">Next &#8250;</a>');
+        Write('</div>');
+    }
+
+    Write('</div>');
+}
+</script>
+</div>
+
+</div><!-- /container -->
+
+<script>
+function toCSVCell(val){
+    var s = (val === null || val === undefined) ? '' : String(val);
+    if(s.indexOf(',') !== -1 || s.indexOf('"') !== -1 || s.indexOf('\n') !== -1 || s.indexOf('\r') !== -1){
+        s = '"' + s.replace(/"/g, '""') + '"';
+    }
+    return s;
+}
+
+function buildCSV(d){
+    var lines = [];
+    lines.push('EMAIL TRACKING REPORT');
+    lines.push('');
+    lines.push('FILTERS APPLIED');
+    lines.push(['Email Name Filter','Start Date','End Date'].map(toCSVCell).join(','));
+    lines.push([
+        d.filters.emailname || '(all)',
+        d.filters.startdate || '(all)',
+        d.filters.enddate   || '(all)'
+    ].map(toCSVCell).join(','));
+    lines.push('');
+    lines.push('SUMMARY STATISTICS (' + d.summary.totalRecords + ' total records)');
+    lines.push(['Actual Send','Avg Delivery Rate','Avg Open Rate','Avg Click Rate','Total Bounces','Total Blocks','Total Tech Bounces'].map(toCSVCell).join(','));
+    lines.push([
+        d.summary.actualSend,
+        d.summary.avgDeliveryRate,
+        d.summary.avgOpenRate,
+        d.summary.avgClickRate,
+        d.summary.totalBounce,
+        d.summary.totalBlock,
+        d.summary.totalTechBounce
+    ].map(toCSVCell).join(','));
+    lines.push('');
+    lines.push('FULL TRACKING DATA');
+    lines.push([
+        'Job ID','Email Name','Event Date','Planned Send','Actual Send',
+        'Delivered','Unique Opens','Unique Clicks','Delivery Rate','Open Rate',
+        'Click Rate','Unsubscribes','Total Bounce','Hard Bounce','Soft Bounce',
+        'Block Bounce','Technical Bounce','Unknown Bounce','Held','List Detective','Exclusion Date','Comments'
+    ].map(toCSVCell).join(','));
+
+    for(var i = 0; i < d.rows.length; i++){
+        var r = d.rows[i];
+        lines.push([
+            r.JobID, r.EmailName, r.EventDate, r.PlannedSend, r.ActualSend,
+            r.Delivered, r.UniqueOpens, r.UniqueClicks, r.DeliveryRate, r.OpenRate,
+            r.ClickRate, r.Unsubscribes, r.TotalBounce, r.HardBounce, r.SoftBounce,
+            r.BlockBounce, r.TechnicalBounce, r.UnknownBounce, r.Held, r.ListDetective,
+            r.ExclusionDate, r.Comments
+        ].map(toCSVCell).join(','));
+    }
+
+    return lines.join('\r\n');
+}
+
+function downloadCSV(){
+    var btn = document.getElementById('dlBtn');
+    if(!window.TRACKING_DATA){
+        alert('No data available. Please run a search first.');
+        return;
+    }
+    btn.disabled    = true;
+    btn.textContent = 'Building...';
+    var csv     = buildCSV(window.TRACKING_DATA);
+    var dateStr = new Date().toISOString().slice(0,10);
+    var name    = window.TRACKING_DATA.filters.emailname
+                  ? window.TRACKING_DATA.filters.emailname.replace(/[^a-zA-Z0-9_-]/g,'_')
+                  : 'All';
+    var filename = 'TrackingReport_' + name + '_' + dateStr + '.csv';
+    var blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    var url  = URL.createObjectURL(blob);
+    var a    = document.createElement('a');
+    a.href        = url;
+    a.download    = filename;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    btn.disabled    = false;
+    btn.textContent = '\u2B07 Download CSV';
+}
+</script>
+
+</body>
+</html>
