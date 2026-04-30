@@ -7,7 +7,6 @@ The primary dashboard. Displays all email send records from the tracking DE with
 Page 2 - Bounce Detail Report (Drill-down Page)
 Opened when a user clicks any Job ID on the main page. Shows a full breakdown of bounces for that specific send — by subcategory, count, percentage, and individual email addresses with their domains.
 
-
 Features:-
 Main Tracking Report:
 Search by Email Name (partial match supported)
@@ -26,7 +25,7 @@ Aggregated bounce table with visual bar indicators and percentage breakdown
 Full email address list grouped by bounce subcategory, with domain tags
 Collapsible/expandable sections per subcategory
 Download CSV button — exports subcategory summary and full email list
----
+-
 
 
 Columns Displayed
@@ -63,7 +62,7 @@ Count	Number of bounces in that subcategory
 Percentage	Share of total bounces
 Email Address	Individual bounced email
 Domain	Domain extracted from email address
----
+
 
 
 Tech Stack
@@ -76,7 +75,7 @@ Frontend	HTML / CSS / Vanilla JavaScript
 CSV export	Client-side Blob with UTF-8 BOM (Excel-compatible)
 Hosting	SFMC CloudPages
 Data population	SQL Query Activity via Automation Studio
----
+-
 
 How It Works
 Data Layer (Automation)
@@ -114,19 +113,19 @@ Page 1 - Email Tracking Report
 The main dashboard showing all email send metrics. Includes filters, summary stat cards (Actual Send, Avg Delivery Rate, Avg Open Rate, Avg Click Rate, Total Bounces, Hard Bounces, Block Bounces, Tech Bounces), a fully paginated data table with 22 columns, frozen first 3 columns during horizontal scroll, and a Download CSV button in the filter bar that exports all matching records across all pages.
 Page 2 - Bounce Detail Report
 A drill-down page linked directly from Page 1. Every Job ID in the main table is a clickable link — clicking it passes the Job ID and Event Date as URL parameters to the Bounce Detail page. The page then queries the Email_Bounce_Detail_DE for that specific Job ID and renders a full breakdown: bounce subcategory summary with counts and percentages, visual bar indicators, and a complete list of bounced email addresses grouped by subcategory with domain tags. Both pages include a Download CSV button that exports all data including metadata and summary sections.
----
+
 
 Notes
 Data covers the last 180 days by default (controlled by the WHERE clause in the SQL queries)
 The CSV export includes all matching records across all pages, not just the current page view
 The Bounce Detail page is accessed only via the Job ID link on the main page — it requires a jobid URL parameter to function
 Secure the CloudPages appropriately for internal use — these pages expose send-level performance data
----
+
 
 Author
 Built by an SFMC Developer as a reusable internal reporting tool.
 If this helped you, leave a star on the repo and connect on LinkedIn!
----
+-
 
 License
 MIT License — free to use, modify, and distribute.
