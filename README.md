@@ -125,7 +125,7 @@ Secure the CloudPages appropriately for internal use — these pages expose send
 Author
 Built by an SFMC Developer as a reusable internal reporting tool.
 If this helped you, leave a star on the repo and connect on LinkedIn!
--
+
 
 License
 MIT License — free to use, modify, and distribute.
